@@ -1,0 +1,5 @@
+# dsh-lost-and-found bundle patch layer.
+# 安装本包到 profile 后, host 端加载主入口(文件快速寻回:扫描/索引/检索)。
+- insert:
+    - id: dsh-lost-and-found
+      name: dsh-lost-and-found

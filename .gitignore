@@ -1,0 +1,16 @@
+# Dependencies
+node_modules/
+
+# Dev / local artifacts
+_tmp/
+*.log
+*.tgz
+
+# Lockfiles come from the local monorepo dev tree; CI resolves fresh.
+pnpm-lock.yaml
+package-lock.json
+
+# OS / editor noise
+Thumbs.db
+desktop.ini
+.DS_Store

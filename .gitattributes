@@ -1,0 +1,17 @@
+# Normalize line endings for the repository.
+# Keep LF on text files so reviewers see clean diffs regardless of the
+# contributor's OS, and to silence the "LF will be replaced by CRLF" warning
+# that appears on Windows checkouts.
+* text=auto
+
+*.js text eol=lf
+*.mjs text eol=lf
+*.json text eol=lf
+*.yml text eol=lf
+*.md text eol=lf
+*.txt text eol=lf
+
+# Screenshots are binary — never touch their bytes.
+*.png binary
+*.gif binary
+*.webp binary
