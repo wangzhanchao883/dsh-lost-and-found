@@ -7,9 +7,9 @@
  *    会把一份「运行快照」写到 ~/.dsh-lost-and-found/run.json。
  *  - 用户数据目录只放运行快照/日志，索引库默认在 %LOCALAPPDATA%\dsh-lost-and-found\。
  */
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 
 /** 每个扫描目录的内容深度策略 */
 export const POLICY = Object.freeze({
@@ -120,9 +120,28 @@ export function defaultDbPath() {
   return join(base, "dsh-lost-and-found", "index.db");
 }
 
+/**
+ * 用户填的「记忆库位置」是不是一个**目录**（而不是库文件本身）？
+ * 实测坑（v0.1.3）：那一格要的是文件路径，但很自然会填成文件夹（如 `D:\findtext`），
+ * 而 `new DatabaseSync("D:\findtext")` 会直接抛 `unable to open database file` —— 扫描整个失败。
+ */
+export function isDirDbPath(p) {
+  if (/[\\/]$/.test(p)) return true;
+  try {
+    if (existsSync(p) && statSync(p).isDirectory()) return true;
+  } catch { /* 读不到就按文件名处理 */ }
+  const base = basename(p);
+  return base !== "" && !base.includes(".");
+}
+
+/**
+ * 把「记忆库位置」规整成一个**文件**路径：
+ * 空 → 默认位置；看着像目录（已存在的目录 / 以分隔符结尾 / 没有扩展名）→ 用该目录下的 index.db。
+ */
 export function resolveDbPath(config) {
   const p = (config && config.dbPath ? String(config.dbPath) : "").trim();
-  return p || defaultDbPath();
+  if (!p) return defaultDbPath();
+  return isDirDbPath(p) ? join(p.replace(/[\\/]+$/, ""), "index.db") : p;
 }
 
 /** 规整扫描目录列表：去空、去重、补默认策略 */

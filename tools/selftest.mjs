@@ -7,7 +7,9 @@
  *   2. the next scan of that folder is incremental and idempotent;
  *   3. a folder whose scan was interrupted does NOT get its anchor advanced;
  *   4. search finds a file when only its *content* carries the keyword — the
- *      "the file name says horse, the picture shows a whale" regression.
+ *      "the file name says horse, the picture shows a whale" regression;
+ *   5. the "database location" box tolerates a folder (v0.1.3) — a folder must
+ *      normalise to index.db inside it instead of blowing up the whole scan.
  *
  * Run: node tools/selftest.mjs   (or: npm test)
  */
@@ -16,7 +18,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { DEFAULT_CONFIG, buildExcludes } from "../config.mjs";
+import { DEFAULT_CONFIG, buildExcludes, defaultDbPath, resolveDbPath } from "../config.mjs";
 import { counts, markRootScanned, openDb, syncRoots, upsertFile } from "../db.mjs";
 import { rootSinceMs } from "../core/schedule.mjs";
 import { scanRoots } from "../core/scan.mjs";
@@ -102,8 +104,21 @@ try {
   );
   ok("a content-only hit is found even when the file name has none of the words");
 
+  // 5) the "database location" box may hold a folder — it must normalise to a file inside it
+  const dbFolder = join(tmp, "dbfolder");
+  mkdirSync(dbFolder, { recursive: true });
+  assert.equal(resolveDbPath({ dbPath: dbFolder }), join(dbFolder, "index.db"),
+    "an existing folder must resolve to index.db inside it");
+  assert.equal(resolveDbPath({ dbPath: dbFolder + "\\" }), join(dbFolder, "index.db"),
+    "a trailing separator must be treated as a folder");
+  assert.equal(resolveDbPath({ dbPath: join(dbFolder, "custom.db") }), join(dbFolder, "custom.db"),
+    "an explicit file path must be kept as-is");
+  assert.equal(resolveDbPath({ dbPath: "" }), defaultDbPath(),
+    "an empty value must fall back to the default location");
+  ok("a folder given as the database location resolves to index.db inside it");
+
   db.close();
-  console.log(`\nself-test passed: ${passed}/4`);
+  console.log(`\nself-test passed: ${passed}/5`);
 } catch (e) {
   console.error("\nself-test FAILED:", (e && e.message) || e);
   process.exitCode = 1;

@@ -3,6 +3,30 @@
 All notable changes to this plugin are documented here.
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.3] — 2026-09-25
+
+### Fixed — settings changed in the panel now take effect immediately (no restart)
+
+0.1.2 read the settings projection **once**, when the plugin was applied. On 0.1.7 the host does
+*not* re-apply a plugin after a settings write (the old `watch` channel is gone), so anything you
+changed in the panel was written to `cordis.patch.yml` but never reached the running plugin.
+This was not a cosmetic lag — it broke the plugin's main workflow:
+
+- add a scan folder in the panel → click **Scan now** → *"no folders configured yet"*
+- change the database location → the plugin kept reading and writing the old database
+
+Both `index.mjs` handlers/tools/hooks now re-read the projection (`settings.describe()`) at the
+start of every entry point through a single `freshConfig()` helper, so a panel edit applies to the
+very next action. No restart, no remount.
+
+### Fixed — a folder given as the database location no longer breaks scanning
+
+`dbPath` is documented as a file path, but a folder is the natural thing to type. Passing a folder
+straight to SQLite fails hard (`unable to open database file`), which took the whole scan down.
+`resolveDbPath()` now normalises the value: an existing directory, a path ending in a separator, or
+a name without an extension is treated as a folder and `index.db` inside it is used. The settings
+hint (zh/en) says so explicitly.
+
 ## [0.1.2] — 2026-09-25
 
 ### Changed — ported to the DSH 0.1.7 settings contract

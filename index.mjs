@@ -118,8 +118,12 @@ export function apply(ctx, input = {}) {
   // ---------- 设置读取（0.1.7 契约） ----------
   // 旧写法 `settings.register(ns, schema, {base})` + `scope.get()` + `scope.watch()` 在 0.1.7 已废：
   // settings 服务改为**投影** Loader 里本插件条目的 `Config`（命名空间 = patch 条目的 id，即
-  // `SETTINGS_NS`），不再维护独立的值，也不再提供 watch。所以读改走 `describe()`；
-  // 写入由 DSH 的 settings 服务直接落到 profile 配置上，Cordis 据此重载本插件（重新 apply）。
+  // `SETTINGS_NS`），不再维护独立的值，也不再提供 watch。所以读改走 `describe()`。
+  //
+  // ⚠️ 0.1.7 实测更正（v0.1.3）：面板写入**不会**让宿主重新 apply 本插件 —— 写进去的值只落在
+  // profile 的 `cordis.patch.yml` 上，本进程内存里的 `liveConfig` 一直是加载那一刻的旧值。
+  // 后果不是「显示没跟上」这种小事，而是功能级故障：面板里刚加的扫描目录，点「立即扫描」会报
+  // 「还没设置要扫描的文件夹」；改了库位置也仍然读写旧库。所以下面所有**入口**都先过 `freshConfig()`。
   let settingsService = null;
 
   function syncFromSettings() {
@@ -135,13 +139,24 @@ export function apply(ctx, input = {}) {
     }
   }
 
+  /**
+   * 取「当前最新」的配置：每次调用都重读一遍设置投影。
+   * 面板改完立刻生效，不需要重启 DSH（`describe()` 读的就是刚写入的权威值，纯内存操作，成本可忽略）。
+   * 所有对外入口（工具 / 斜杠命令 / 自动扫描检查）都必须先走这里，不要直接读 `liveConfig` 的闭包快照。
+   */
+  function freshConfig() {
+    syncFromSettings();
+    return liveConfig;
+  }
+
   ctx.inject(["settings"], (settingsCtx) => {
     settingsService = settingsCtx.settings;
-    syncFromSettings();
+    freshConfig();
   });
 
   // ---------- 派生扫描子进程 ----------
   async function spawnScan({ trigger = "manual", wait = false, forceFull = false } = {}) {
+    freshConfig();
     if (childRunning && wait) throw new Error("已有扫描在进行中");
     if (!liveConfig.enabled) throw new Error("插件已关闭（可在设置页打开）");
     const roots = normalizeRoots(liveConfig.roots);
@@ -212,6 +227,7 @@ export function apply(ctx, input = {}) {
   // ---------- 到期自动扫描：会话一开就检查（用户选了「每天」） ----------
   function maybeAutoScan(reason) {
     try {
+      freshConfig();
       if (!liveConfig.enabled) return;
       const days = Number(liveConfig.intervalDays);
       if (!days || days <= 0) return;
@@ -261,7 +277,7 @@ export function apply(ctx, input = {}) {
       fallback: { type: "boolean", description: "索引没命中时是否实时扫描扫描目录兜底，默认 true" },
     },
     async execute(args = {}) {
-      const cfg = liveConfig;
+      const cfg = freshConfig();
       const roots = normalizeRoots(cfg.roots);
       const opts = {
         keywords: args.keywords,
@@ -338,7 +354,7 @@ export function apply(ctx, input = {}) {
       full: { type: "boolean", description: "强制全量重扫（忽略已有锚点），默认 false" },
     },
     async execute(args = {}) {
-      const cfg = liveConfig;
+      const cfg = freshConfig();
       if (!normalizeRoots(cfg.roots).length) {
         return "还没设置要扫描的文件夹。请在插件设置页点「一键扫描」或手动添加目录后再试。";
       }
@@ -371,7 +387,7 @@ export function apply(ctx, input = {}) {
     description: "查看「文件快速寻回」的概况：上次扫描时间、库内文件数、扫描目录、待处理项、野文件提示、库位置与错误。",
     parameters: {},
     async execute() {
-      const cfg = liveConfig;
+      const cfg = freshConfig();
       const dbPath = resolveDbPath(cfg);
       const { db } = openLiveDb(cfg);
       try {
@@ -449,7 +465,8 @@ export function apply(ctx, input = {}) {
     async execute(args = {}) {
       const paths = (args.paths || []).map((x) => (typeof x === "string" ? x : x && x.path)).filter(Boolean);
       if (!paths.length) return "请提供要忘掉的路径";
-      const { db } = openLiveDb(liveConfig);
+      const cfg = freshConfig();
+      const { db } = openLiveDb(cfg);
       try {
         const n = forgetPaths(db, paths);
         return `已从记忆库删除 ${n} 条记录（用户文件未被改动）。`;
@@ -465,7 +482,8 @@ export function apply(ctx, input = {}) {
     description: "手动检查一批已记录文件是否还在原处（用于清理「已经不在了」的记录）。",
     parameters: { limit: { type: "number", description: "本批检查条数，默认 500" } },
     async execute(args = {}) {
-      const { db } = openLiveDb(liveConfig);
+      const cfg = freshConfig();
+      const { db } = openLiveDb(cfg);
       try {
         const r = verifyBatch(db, Number(args.limit) || 500);
         return `检查了 ${r.checked} 个文件，其中 ${r.missing} 个已不在原处（连续两次确认后才会标记）。`;
@@ -482,8 +500,9 @@ export function apply(ctx, input = {}) {
       "取出「还没看过内容」的图片清单（供模型用 read_image 逐张看图并写描述）。返回路径+名字+时间。",
     parameters: { limit: { type: "number", description: "本次取几张，默认用配置里的看图配额" } },
     async execute(args = {}) {
-      const limit = Number(args.limit) || Number(liveConfig.imageQuotaPerRun) || 20;
-      const { db } = openLiveDb(liveConfig);
+      const cfg = freshConfig();
+      const limit = Number(args.limit) || Number(cfg.imageQuotaPerRun) || 20;
+      const { db } = openLiveDb(cfg);
       try {
         const rows = db.prepare(`
           SELECT path, name, ext, size, appeared_ms, origin FROM files
@@ -515,7 +534,8 @@ export function apply(ctx, input = {}) {
     async execute(args = {}) {
       const p = String(args.path || "").trim();
       if (!p) return "请提供图片路径";
-      const { db } = openLiveDb(liveConfig);
+      const cfg = freshConfig();
+      const { db } = openLiveDb(cfg);
       try {
         const r = db.prepare("UPDATE files SET image_desc = ?, tags = ?, enrich = 'described', last_seen_ms = ? WHERE path = ?")
           .run(String(args.description || ""), String(args.tags || ""), Date.now(), p);
@@ -534,7 +554,7 @@ export function apply(ctx, input = {}) {
       input: { hint: "扫描一次：新目录首次扫描会回填其历史文件，其余只收新增。", images: false },
       handler: async () => {
         try {
-          const roots = normalizeRoots(liveConfig.roots);
+          const roots = normalizeRoots(freshConfig().roots);
           if (!roots.length) return { kind: "error", text: "还没设置要扫描的文件夹：请在插件设置页点「一键扫描」或手动添加目录。" };
           const r = await spawnScan({ trigger: "settings", wait: true });
           if (!r.result || r.result.ok === false) {
@@ -564,7 +584,7 @@ export function apply(ctx, input = {}) {
       input: { hint: "查看上次扫描时间、库内文件数、扫描目录。", images: false },
       handler: async () => {
         try {
-          const cfg = liveConfig;
+          const cfg = freshConfig();
           const dbPath = resolveDbPath(cfg);
           const { db } = openLiveDb(cfg);
           try {

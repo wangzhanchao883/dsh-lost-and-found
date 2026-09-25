@@ -124,7 +124,7 @@ dsh plugin --profile web add link:/path/to/dsh-lost-and-found
 | --- | --- | --- |
 | `enabled` | `true` | 关闭后不再自动扫描，也不再提供找文件工具 |
 | `roots` | `[]` | 要监视的目录，每个目录带自己的 `policy` |
-| `dbPath` | 空 | 索引库位置；留空用 `%LOCALAPPDATA%\dsh-lost-and-found\index.db` |
+| `dbPath` | 空 | 索引库位置；留空用 `%LOCALAPPDATA%\dsh-lost-and-found\index.db`。可以填**文件**路径，也可以直接填**文件夹**（会用该文件夹下的 `index.db`） |
 | `intervalDays` | `1` | 自动扫描间隔；`0` = 只手动 |
 | `firstScanMode` | `full` | 一个目录**第一次**被扫时收多久：`full` 全部历史 / `window` 最近 `firstRunWindowDays` 天 / `none` 只收今后新增 |
 | `firstRunWindowDays` | `7` | 仅当 `firstScanMode = window` 时生效 |
@@ -141,8 +141,10 @@ DSH 0.1.7 起，设置服务**不再替插件另存一份配置** —— 它只�
 
 - 设置页里改的值会写进 `$DSH_HOME/profiles/web/cordis.patch.yml` 中 `id: dsh-lost-and-found` 那段
 - 想手改也行，直接编辑那个文件，效果与设置页完全一致
-- 写完 Loader 会热重载本插件（配置编辑与热重载是串行化的），新值随即生效；
-  若发现某个值没立刻跟上，重启一次 DSH 即可
+- **改完立刻生效，不需要重启 DSH**：0.1.7 移除了旧版的 `watch`，插件改为在**每次用到配置之前**
+  重新读一遍投影（`settings.describe()`），所以面板里加完目录就能直接点「立即扫描」
+- 从 0.1.2 升级上来的话注意：0.1.2 只在插件加载那一刻读一次配置，会表现为
+  「面板里明明加了文件夹，点扫描却说还没设置」—— 0.1.3 修的就是这个
 
 ## 扫描目录的内容深度（每个目录可不同）
 
