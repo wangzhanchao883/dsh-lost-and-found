@@ -90,7 +90,9 @@ Requires DSH with the web profile and Node.js `^22` or `>=24`. Windows-focused
 
 ## 环境要求
 
-- DSH，使用 `web` profile
+- DSH **0.1.7 或更高**，使用 `web` profile
+  （设置页依赖 0.1.7 才有的 `configForms` 客户端服务与 `Config` 导出契约。更早的 0.1.x 上
+  **host 功能仍然可用** —— 扫描、检索、工具调用都不受影响 —— 但设置页不会出现）
 - Node.js `^22` 或 `>=24`（用到内置 `node:sqlite`）
 - 无需 API key、无需联网；扫描与检索全部在本机完成
 
@@ -131,6 +133,16 @@ dsh plugin --profile web add link:/path/to/dsh-lost-and-found
 | `patrolEnabled` | `true` | 是否提示白名单外有新文件的目录 |
 | `backupKeep` | `7` | 每日备份保留份数，`0` = 不备份 |
 | `extraExcludeDirs` / `extraExcludePatterns` | `[]` | 追加的排除目录名 / 路径片段（`re:` 前缀表示正则） |
+
+### 配置存在哪（DSH 0.1.7 起）
+
+DSH 0.1.7 起，设置服务**不再替插件另存一份配置** —— 它只把 Loader 里本插件条目的
+`Config` *投影*成表单，权威值始终在 profile 的补丁文件里：
+
+- 设置页里改的值会写进 `$DSH_HOME/profiles/web/cordis.patch.yml` 中 `id: dsh-lost-and-found` 那段
+- 想手改也行，直接编辑那个文件，效果与设置页完全一致
+- 写完 Loader 会热重载本插件（配置编辑与热重载是串行化的），新值随即生效；
+  若发现某个值没立刻跟上，重启一次 DSH 即可
 
 ## 扫描目录的内容深度（每个目录可不同）
 

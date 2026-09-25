@@ -3,6 +3,46 @@
 All notable changes to this plugin are documented here.
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.2] — 2026-09-25
+
+### Changed — ported to the DSH 0.1.7 settings contract
+
+DSH 0.1.7 rebuilt its settings system: the plugin-side `settings.register(ns, schema, { base })`
+API and the browser-side `ctx.settingsScope` service were **removed outright** (not renamed).
+The settings service is now a *projection* over the plugin entry's own `Config` in the Loader
+configuration — it keeps no authoritative value of its own and offers no `watch`. Without this
+port the plugin could not enable its settings page on 0.1.7.
+
+**Host side (`index.mjs`)**
+
+- `settingsSchema` → `export const Config`, with every writable field marked `.volatile()`.
+  0.1.7 only projects fields that declare themselves volatile (i.e. editable live, without a
+  remount); if *no* field is marked, the whole entry is silently filtered out of the settings
+  document and the panel disappears with no error logged.
+- `settings.register(...)` + `scope.get()` + `scope.watch(...)` → a read via
+  `settings.describe()`, matched on the entry id. Writes are handled by DSH itself and land in
+  the profile configuration, which makes Cordis reload the plugin.
+- Added a `vol()` guard so the schema still loads on schemastery < 3.18.4, where `.volatile()`
+  does not exist and would have thrown at module evaluation time.
+
+**Browser side (`client.js`)**
+
+- `ctx.settingsScope.bind({ namespace })` → `ctx.configForms.get(entryId)`; the service name in
+  `inject` follows. The new form object keeps the same `getSnapshot` / `subscribe` / `set`
+  surface and the same snapshot shape, so the component body is unchanged.
+
+**Packaging (`package.json`)**
+
+- Dropped `@deepseek-ai/dsh-client-runtime` from `dsh.client.inject` — that package does not
+  exist in 0.1.7, and the client bundle never referenced it.
+- `@deepseek-ai/schemastery` dev dependency raised to `^3.18.4` (the first release with
+  `.volatile()`).
+
+**Behaviour is unchanged.** Every field in `DEFAULT_CONFIG` was compared against its schema
+default before the port and they match on all 12 keys, so no effective default moved. The
+settings page is preserved — verified by replaying DSH's own `volatileForm()` projection over
+the exported `Config`: 12 of 12 fields survive it.
+
 ## [0.1.1] — 2026-09-14
 
 ### Fixed — scanning missed most of a folder's existing files

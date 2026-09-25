@@ -41,20 +41,30 @@ export const inject = ["tools", "commands"];
 const SETTINGS_NS = "dsh-lost-and-found";
 const AUTO_CHECK_THROTTLE_MS = 15 * 60 * 1000;
 
-const settingsSchema = z.object({
-  enabled: z.boolean().default(true),
-  dbPath: z.string().default(""),
-  intervalDays: z.number().min(0).max(365).default(1),
-  firstRunWindowDays: z.number().min(0).max(365).default(7),
+/**
+ * 0.1.7 设置契约：插件用**纯具名导出**的 `Config` 声明可配置项，settings 服务照着它投影出表单。
+ * 两条硬要求：
+ *   ① 不能有 `export default` —— 剥壳后会把 `Config` 一起丢掉，条目被静默过滤；
+ *   ② 每个可写字段都要标 `.volatile()`（= 「能现场改、改完不用重挂载」），否则 `volatileForm()`
+ *      返回 undefined，整个条目被 `describe()` **静默过滤**（面板消失，且不报任何错）。
+ * `.volatile()` 需要 schemastery >= 3.18.4；下面降级包装保证在老版本上仍能正常加载。
+ */
+const vol = (schema) => (typeof schema.volatile === "function" ? schema.volatile() : schema);
+
+export const Config = z.object({
+  enabled: vol(z.boolean().default(true)),
+  dbPath: vol(z.string().default("")),
+  intervalDays: vol(z.number().min(0).max(365).default(1)),
+  firstRunWindowDays: vol(z.number().min(0).max(365).default(7)),
   /** 目录首次扫描收多久：full=全部历史（默认）/ window=最近 N 天 / none=只收今后新增 */
-  firstScanMode: z.string().default("full"),
-  maxFileMB: z.number().min(0).max(10240).default(50),
-  patrolEnabled: z.boolean().default(true),
-  imageQuotaPerRun: z.number().min(0).max(500).default(20),
-  backupKeep: z.number().min(0).max(60).default(7),
-  roots: z.array(z.object({ path: z.string(), policy: z.string().default("full") })).default([]),
-  extraExcludeDirs: z.array(z.string()).default([]),
-  extraExcludePatterns: z.array(z.string()).default([]),
+  firstScanMode: vol(z.string().default("full")),
+  maxFileMB: vol(z.number().min(0).max(10240).default(50)),
+  patrolEnabled: vol(z.boolean().default(true)),
+  imageQuotaPerRun: vol(z.number().min(0).max(500).default(20)),
+  backupKeep: vol(z.number().min(0).max(60).default(7)),
+  roots: vol(z.array(z.object({ path: z.string(), policy: z.string().default("full") })).default([])),
+  extraExcludeDirs: vol(z.array(z.string()).default([])),
+  extraExcludePatterns: vol(z.array(z.string()).default([])),
 });
 
 function textTool(definition) {
@@ -105,19 +115,29 @@ export function apply(ctx, input = {}) {
   let lastAutoCheck = 0;
   let childRunning = false;
 
-  // ---------- 设置命名空间（Web 设置页读写；用户配置的唯一真相来源） ----------
-  ctx.inject(["settings"], (settingsCtx) => {
+  // ---------- 设置读取（0.1.7 契约） ----------
+  // 旧写法 `settings.register(ns, schema, {base})` + `scope.get()` + `scope.watch()` 在 0.1.7 已废：
+  // settings 服务改为**投影** Loader 里本插件条目的 `Config`（命名空间 = patch 条目的 id，即
+  // `SETTINGS_NS`），不再维护独立的值，也不再提供 watch。所以读改走 `describe()`；
+  // 写入由 DSH 的 settings 服务直接落到 profile 配置上，Cordis 据此重载本插件（重新 apply）。
+  let settingsService = null;
+
+  function syncFromSettings() {
+    if (!settingsService) return false;
     try {
-      const scope = settingsCtx.settings.register(SETTINGS_NS, settingsSchema, { base: liveConfig });
-      const resolved = scope.get();
-      if (resolved) liveConfig = { ...liveConfig, ...resolved, roots: normalizeRoots(resolved.roots) };
-      scope.watch((next) => {
-        if (!next) return;
-        liveConfig = { ...liveConfig, ...next, roots: normalizeRoots(next.roots) };
-      });
+      const row = settingsService.describe().find((it) => it && it.ns === SETTINGS_NS);
+      if (!row || row.value === undefined || row.value === null) return false;
+      liveConfig = { ...liveConfig, ...row.value, roots: normalizeRoots(row.value.roots) };
+      return true;
     } catch (err) {
-      ctx.logger.warn(`dsh-lost-and-found: 设置命名空间注册失败:${err.message}`);
+      ctx.logger.warn(`dsh-lost-and-found: 读取设置失败(继续用传入配置) - ${err.message}`);
+      return false;
     }
+  }
+
+  ctx.inject(["settings"], (settingsCtx) => {
+    settingsService = settingsCtx.settings;
+    syncFromSettings();
   });
 
   // ---------- 派生扫描子进程 ----------

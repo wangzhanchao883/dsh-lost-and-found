@@ -323,7 +323,10 @@ window.__ModuleLoader__.load({
       ctx.effect(() => ctx.locale.register(NS, { zh, en }), "dsh-lost-and-found: dictionaries");
 
       const t = ctx.locale.bind(NS);
-      const scope = ctx.settingsScope.bind({ namespace: SETTINGS_NAMESPACE });
+      // 0.1.7：`ctx.settingsScope` 已被整个移除，改为 `ctx.configForms.get(条目 id)`。
+      // 新 API 与旧 API 同名同义（getSnapshot / subscribe / set / unset / mutate），
+      // 快照结构 `{status,value,base,user,revision,writable,mode}` 也没变，所以组件体无需改动。
+      const scope = ctx.configForms.get(SETTINGS_NAMESPACE);
       // 客户端远程命名空间挂在 `remote.<namespace>` 服务上（DSH 0.1.5-rc.1 起；
       // 旧的 connection.api.* 已不存在，写它会报 reading 'sessions'）。
       // 触发斜杠命令必须走 remote.commands.execute：往会话里塞一条 "/cmd" 文本
@@ -399,7 +402,7 @@ window.__ModuleLoader__.load({
 
     module.exports = {
       name: "dsh-lost-and-found",
-      inject: ["slots", "locale", "settingsScope", "remote", "remote.commands", "sessions"],
+      inject: ["slots", "locale", "configForms", "remote", "remote.commands", "sessions"],
       apply,
     };
     return module.exports;
