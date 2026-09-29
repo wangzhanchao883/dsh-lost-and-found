@@ -90,9 +90,11 @@ Requires DSH with the web profile and Node.js `^22` or `>=24`. Windows-focused
 
 ## 环境要求
 
-- DSH **0.1.7 或更高**，使用 `web` profile
+- DSH **0.1.7 ~ 0.2.x**，使用 `web` profile
   （设置页依赖 0.1.7 才有的 `configForms` 客户端服务与 `Config` 导出契约。更早的 0.1.x 上
   **host 功能仍然可用** —— 扫描、检索、工具调用都不受影响 —— 但设置页不会出现）
+- **0.2 已实测可用**：本机在 `0.2.0-rc.1` 上完整跑通（含浏览器端设置页），`peerDependencies`
+  上界已从 `<0.2.0-0` 抬到 `<0.3.0-0`
 - Node.js `^22` 或 `>=24`（用到内置 `node:sqlite`）
 - 无需 API key、无需联网；扫描与检索全部在本机完成
 

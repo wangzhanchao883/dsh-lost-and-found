@@ -3,6 +3,27 @@
 All notable changes to this plugin are documented here.
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.4] — 2026-09-29
+
+### Changed — DSH 0.2 compatibility / 兼容 DSH 0.2
+
+Tested on `0.2.0-rc.1`. **No code changed** — the peer range is the whole of it.
+
+- **Raised the peer upper bound.** `@deepseek-ai/dsh-tools` went from
+  `>=0.0.1-rc.1 <0.1.0 || >=0.1.0-rc.1 <0.2.0-0` to
+  `>=0.0.1-rc.1 <0.1.0 || >=0.1.0-rc.1 <0.2.0-0 || >=0.2.0-rc.1 <0.3.0-0`.
+  The old `<0.2.0-0` bound means "no 0.2.0 prerelease of any kind", and the harness compares its
+  **own** version against this range — not the version of `dsh-tools`. So on 0.2.0 the plugin was
+  refused outright at install time (`installation rejected` / `nothing was installed`). On 0.1.7 the
+  same mismatch only caused a startup-time skip; 0.2 moved that check earlier, to install.
+- **An explicit prerelease branch is required, not optional.** node-semver only lets a prerelease
+  version satisfy a range when some comparator in that range shares its exact `major.minor.patch`
+  tuple *and* carries a prerelease tag itself. A single `>=0.1.0-rc.1 <0.3.0-0` therefore silently
+  excludes `0.2.0-rc.1`; the `>=0.2.0-rc.1 <0.3.0-0` branch has to be written out.
+- **Verified:** with the new range the plugin installs and activates on `0.2.0-rc.1` with a clean
+  startup (`skipping` = 0, `did not activate` = 0), host tools and the browser-side settings panel
+  both working. Behaviour on 0.1.7 is unchanged.
+
 ## [0.1.3] — 2026-09-25
 
 ### Fixed — settings changed in the panel now take effect immediately (no restart)
